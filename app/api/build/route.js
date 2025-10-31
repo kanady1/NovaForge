@@ -1,22 +1,22 @@
 // app/api/build/route.js
 import { NextResponse } from 'next/server';
-import { commitFile } from '@/lib/github';
-import { triggerDeploy } from '@/lib/vercel';
+import { commitFile } from '../../../lib/github';
+import { triggerDeploy } from '../../../lib/vercel';
 
-// صحة API
+// فحص سريع للحالة
 export function GET() {
   return NextResponse.json({ ok: true, service: 'build-api' });
 }
 
-// إنشاء/تعديل ملف + (اختياري) تشغيل نشر Vercel
+// إنشاء أو تعديل ملف وتشغيل النشر في Vercel
 export async function POST(req) {
   try {
     const body = await req.json();
     const {
-      path,                // مسار الملف داخل المستودع (مثال: 'projects/foo.md')
-      content = '',        // محتوى الملف
+      path,                 // مسار الملف داخل المستودع (مثلاً: 'projects/test.md')
+      content = '',         // محتوى الملف الجديد
       message = 'NovaForge: update', // رسالة الكومِت
-      trigger = true       // شغّل نشر Vercel بعد الكومِت؟
+      trigger = true        // هل نشغّل نشر Vercel بعد الكومِت؟
     } = body || {};
 
     if (!path || typeof path !== 'string') {
@@ -26,24 +26,23 @@ export async function POST(req) {
       );
     }
 
-    // 1) كومِت على GitHub
+    // 1️⃣ رفع الملف إلى GitHub
     const commit = await commitFile(path, content, message);
 
-    // 2) نشر Vercel (اختياري)
+    // 2️⃣ تشغيل النشر في Vercel (اختياري)
     let deploy = null;
     if (trigger) {
       try {
         deploy = await triggerDeploy();
-      } catch (e) {
-        // لا نفشل الطلب كله لو فشل النشر
-        deploy = { ok: false, error: e?.message ?? 'Deploy hook failed' };
+      } catch (err) {
+        deploy = { ok: false, error: err?.message ?? 'فشل تنفيذ نشر Vercel' };
       }
     }
 
     return NextResponse.json({ ok: true, commit, deploy });
-  } catch (e) {
+  } catch (err) {
     return NextResponse.json(
-      { ok: false, error: e?.message ?? 'Unexpected error' },
+      { ok: false, error: err?.message ?? 'خطأ غير متوقّع في الخادم' },
       { status: 500 }
     );
   }
