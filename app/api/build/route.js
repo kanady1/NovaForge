@@ -1,46 +1,49 @@
 // app/api/build/route.js
-import { NextResponse } from "next/server";
-import { commitFile } from "@/lib/github";
-import { triggerDeploy } from "@/lib/vercel";
+import { NextResponse } from 'next/server';
+import { commitFile } from '@/lib/github';
+import { triggerDeploy } from '@/lib/vercel';
 
-// فحص سريع للحالة
+// صحة API
 export function GET() {
-  return NextResponse.json({ ok: true, service: "build-api" });
+  return NextResponse.json({ ok: true, service: 'build-api' });
 }
 
-// استدعاء: POST /api/build  مع body = { path, content, message?, trigger? }
+// إنشاء/تعديل ملف + (اختياري) تشغيل نشر Vercel
 export async function POST(req) {
   try {
-    const { path, content, message, trigger = true } = await req.json();
+    const body = await req.json();
+    const {
+      path,                // مسار الملف داخل المستودع (مثال: 'projects/foo.md')
+      content = '',        // محتوى الملف
+      message = 'NovaForge: update', // رسالة الكومِت
+      trigger = true       // شغّل نشر Vercel بعد الكومِت؟
+    } = body || {};
 
-    if (!path || typeof content !== "string") {
+    if (!path || typeof path !== 'string') {
       return NextResponse.json(
-        { ok: false, error: "path و content مطلوبان" },
+        { ok: false, error: 'path مطلوب ويجب أن يكون نصّاً' },
         { status: 400 }
       );
     }
 
-    // كومِت للملف في GitHub
-    const result = await commitFile({ path, content, message });
+    // 1) كومِت على GitHub
+    const commit = await commitFile(path, content, message);
 
-    // (اختياري) شغّل نشر Vercel إذا معيّن hook
+    // 2) نشر Vercel (اختياري)
+    let deploy = null;
     if (trigger) {
       try {
-        await triggerDeploy();
+        deploy = await triggerDeploy();
       } catch (e) {
-        // نطنّش خطأ الهوك حتى ما يفشل الطلب كله
-        console.warn("vercel hook error:", e?.message);
+        // لا نفشل الطلب كله لو فشل النشر
+        deploy = { ok: false, error: e?.message ?? 'Deploy hook failed' };
       }
     }
 
-    return NextResponse.json({
-      ok: true,
-      commitSha: result?.commit?.sha ?? null,
-      path,
-    });
+    return NextResponse.json({ ok: true, commit, deploy });
   } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Unknown error" },
+      { ok: false, error: e?.message ?? 'Unexpected error' },
       { status: 500 }
     );
   }
