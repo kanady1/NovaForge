@@ -1,22 +1,97 @@
 "use client";
-import { useEffect,useState } from "react";
-export default function Builder({params}){
-  const {slug}=params;const [log,setLog]=useState([]);const [previewUrl,setPreviewUrl]=useState("");
-  const [input,setInput]=useState("");const [busy,setBusy]=useState(false);
-  useEffect(()=>{(async()=>{const r=await fetch(`/api/projects?slug=${slug}`);const j=await r.json();if(j.previewPath)setPreviewUrl(j.previewPath);setLog(j.timeline||[])})()},[slug]);
-  async function applyChange(){if(!input.trim()||busy)return;setBusy(true);try{const r=await fetch('/api/build',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt:input,slug})});const j=await r.json();setLog(L=>[j.message||'Applied',...L]);if(j.previewUrl)setPreviewUrl(j.previewUrl);setInput('')}finally{setBusy(false)}};
-  return (<div className="min-h-screen bg-black text-white"><div className="mx-auto max-w-7xl px-4 py-6">
-    <div className="flex items-center justify-between mb-4"><div className="text-sm opacity-70">Project</div>
-      <div className="flex gap-2"><a className="px-3 py-1 rounded-md bg-indigo-600" href={previewUrl||'#'} target="_blank">Publish</a>
-        <button className="px-3 py-1 rounded-md bg-neutral-800" onClick={()=>location.reload()}>Sync</button>
-        <a className="px-3 py-1 rounded-md bg-neutral-800" href={previewUrl||'#'}>Preview</a></div></div>
-    <div className="grid lg:grid-cols-3 gap-6">
-      <div className="lg:col-span-2 rounded-xl border border-neutral-800 bg-neutral-900 p-3"><iframe src={previewUrl} className="w-full h-[60vh] rounded-lg bg-white"/></div>
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-3"><div className="text-sm mb-2 opacity-70">التحديثات</div>
-        <div className="space-y-2 max-h-[60vh] overflow-auto">{log.map((x,i)=>(<div key={i} className="text-sm bg-black/30 rounded-md p-2 border border-neutral-800">{x}</div>))}
-          {log.length===0&&<div className="opacity-60 text-sm">لا يوجد سجل حتى الآن.</div>}</div></div></div>
-    <div className="fixed left-0 right-0 bottom-0 bg-black/70 border-t border-neutral-800"><div className="mx-auto max-w-7xl px-4 py-3 flex gap-3">
-      <textarea className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl p-3 h-16 resize-none" placeholder="اكتب التعديل المطلوب…" value={input} onChange={e=>setInput(e.target.value)} disabled={busy}/>
-      <button onClick={applyChange} disabled={busy} className={`rounded-full w-12 h-12 ${busy?'bg-neutral-700':'bg-white text-black'}`}>↑</button></div></div>
-  </div></div>);
+
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+
+export default function BuilderPage() {
+  const { slug } = useParams();           // مجلد/اسم المشروع
+  const router = useRouter();
+
+  // حالة واجهة الكتابة
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
+
+  // مسار الملف داخل الريبو (مثلاً projects/my-app.md)
+  const filePath = useMemo(() => projects/${slug}.md, [slug]);
+
+  async function handleBuild() {
+    if (!input.trim() || busy) return;
+    setBusy(true);
+
+    try {
+      const res = await fetch("/api/build", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          path: filePath,
+          content: input,                                 // محتوى الملف الذي تُنشئه
+          message: NovaForge: update ${filePath},       // رسالة الكومِت
+          trigger: true                                   // يطلّق نشر Vercel إذا متوفر
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || "Build API failed");
+      }
+
+      // لو رجّعت API عنوان معاينة نعرضه
+      if (data.previewUrl) setPreviewUrl(data.previewUrl);
+
+      // تنظيف محرر النص بعد نجاح الإرسال
+      setInput("");
+    } catch (e) {
+      alert(e.message || "حدث خطأ أثناء الإنشاء");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-black text-white">
+      <div className="max-w-4xl mx-auto p-4">
+        <h1 className="text-2xl font-semibold mb-3">NovaForge Studio</h1>
+
+        {/* صندوق الكتابة */}
+        <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-3">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="اكتب ماذا تريد بناءه..."
+            className="w-full h-40 bg-transparent outline-none resize-none"
+            disabled={busy}
+          />
+          <div className="flex items-center justify-between mt-3">
+            <div className="text-sm opacity-70">المسار: {filePath}</div>
+
+            {/* زر السهم للإرسال */}
+            <button
+              onClick={handleBuild}
+              disabled={busy || !input.trim()}
+              className={`rounded-full w-10 h-10 grid place-items-center
+                         ${busy || !input.trim()
+                           ? "bg-neutral-800 opacity-60 cursor-not-allowed"
+                           : "bg-white text-black hover:opacity-80"}`}
+              aria-label="Build"
+              title="Build"
+            >
+              ↑
+            </button>
+          </div>
+        </div>
+
+        {/* روابط تحتية */}
+        <div className="flex gap-3 mt-4 text-sm">
+          <a className="underline" href="/admin" target="_blank">Admin</a>
+          <a className="underline" href="/plans" target="_blank">Plans</a>
+          {previewUrl && (
+            <a className="underline" href={previewUrl} target="_blank">
+              Preview
+            </a>
+          )}
+        </div>
+      </div>
+    </main>
+  );
 }
