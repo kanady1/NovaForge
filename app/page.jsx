@@ -1,30 +1,140 @@
-"use client";
-import { useState,useEffect } from "react";
-export default function Home(){
-  const [prompt,setPrompt]=useState("");const [busy,setBusy]=useState(false);
-  const [projects,setProjects]=useState([]);const [lang,setLang]=useState("ar");
-  useEffect(()=>{(async()=>{try{const r=await fetch('/api/projects',{cache:'no-store'});const j=await r.json();setProjects(j.projects||[])}catch{}})()},[]);
-  async function onSubmit(){if(!prompt.trim()||busy)return;setBusy(true);try{const r=await fetch('/api/build',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt,lang})});const j=await r.json();if(j.previewUrl)window.location.href=j.builderUrl??j.previewUrl}finally{setBusy(false);setPrompt('')}};
-  return (<div className="min-h-screen bg-black text-white"><div className="mx-auto max-w-6xl px-4 py-8">
-    <h1 className="text-3xl font-semibold mb-6">NovaForge Studio</h1>
-    <div className="rounded-2xl p-4 bg-neutral-900 border border-neutral-800 mb-8">
-      <div className="mb-3 flex gap-3 items-center"><label className="text-sm opacity-70">اللغة</label>
-        <select className="bg-neutral-800 rounded-md px-2 py-1 text-sm" value={lang} onChange={(e)=>setLang(e.target.value)}>
-          <option value="ar">العربية</option><option value="he">العبرية</option><option value="en">English</option>
-        </select></div>
-      <textarea className="w-full rounded-xl bg-neutral-800 p-3 outline-none resize-none h-28" placeholder="اكتب ماذا تريد بناءه…" value={prompt} onChange={e=>setPrompt(e.target.value)} disabled={busy} />
-      <div className="mt-3 flex items-center justify-between">
-        <div className="flex gap-2">
-          <button className="px-3 py-1 rounded-md bg-neutral-800 text-xs">Attach</button>
-          <button className="px-3 py-1 rounded-md bg-neutral-800 text-xs">Public</button>
-          <button className="px-3 py-1 rounded-md bg-neutral-800 text-xs">Supabase</button>
+// app/page.jsx
+'use client';
+
+import { useState } from 'react';
+
+function toSlug(s) {
+  return (s || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || project-${Date.now()};
+}
+
+export default function Home() {
+  const [lang, setLang] = useState('ar');
+  const [text, setText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    if (loading) return;
+
+    const title = text?.trim();
+    if (!title) return;
+
+    setLoading(true);
+    setMsg(null);
+
+    const slug = toSlug(title);
+    const path = projects/${slug}.json;
+    const payload = {
+      path,
+      message: NovaForge: init ${slug},
+      content: JSON.stringify(
+        {
+          slug,
+          title,
+          lang,
+          createdAt: new Date().toISOString(),
+          status: 'draft',
+        },
+        null,
+        2
+      ),
+      trigger: true,
+    };
+
+    try {
+      const res = await fetch('/api/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'Build API failed');
+      }
+
+      // الانتقال إلى صفحة البناء
+      window.location.href = /builder/${slug};
+    } catch (err) {
+      setMsg(err.message || 'حدث خطأ غير متوقع');
+    } finally {
+      setLoading(false);
+      // لا نمسح النص هنا حتى لا “يختفي” قبل التوجيه
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      <div className="max-w-4xl mx-auto px-4 py-10">
+        <h1 className="text-2xl font-semibold mb-6">NovaForge Studio</h1>
+
+        <form
+          onSubmit={onSubmit}
+          className="bg-zinc-900/60 rounded-xl p-4 border border-zinc-800"
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <label className="text-sm opacity-80">اللغة</label>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
+            >
+              <option value="ar">العربية</option>
+              <option value="he">العبرية</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="اكتب ماذا تريد بنائه…"
+            className="w-full min-h-[120px] bg-zinc-800 border border-zinc-700 rounded-lg p-3 outline-none"
+          />
+
+          <div className="flex items-center justify-between mt-3">
+            <div className="flex items-center gap-2 text-xs">
+              <button type="button" className="px-2 py-1 bg-zinc-800 rounded border border-zinc-700">Supabase</button>
+              <button type="button" className="px-2 py-1 bg-zinc-800 rounded border border-zinc-700">Public</button>
+              <button type="button" className="px-2 py-1 bg-zinc-800 rounded border border-zinc-700">Attach</button>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={`px-4 py-2 rounded-lg ${
+                loading
+                  ? 'bg-zinc-700 cursor-not-allowed'
+                  : 'bg-white text-black hover:opacity-90'
+              }`}
+            >
+              {loading ? 'جارٍ الإنشاء…' : 'إنشاء'}
+            </button>
+          </div>
+
+          {msg && (
+            <p className="mt-3 text-sm text-red-400">
+              {msg}
+            </p>
+          )}
+        </form>
+
+        <div className="mt-10">
+          <h2 className="text-lg mb-2">مشاريعك</h2>
+          <p className="text-sm opacity-70">
+            لا توجد مشاريع بعد. اكتب وصفك في الأعلى واضغط “إنشاء” لبدء أول مشروع.
+          </p>
         </div>
-        <button onClick={onSubmit} disabled={busy} className={`rounded-full w-10 h-10 flex items-center justify-center ${busy?'bg-neutral-700':'bg-white text-black'}`} title="إنشاء">↑</button>
       </div>
     </div>
-    <h2 className="text-xl mb-3">مشاريعك</h2>
-    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {projects.map(p=>(<a key={p.slug} href={`/builder/${p.slug}`} className="block rounded-xl border border-neutral-800 p-4 bg-neutral-900 hover:bg-neutral-800"><div className="text-lg">{p.title}</div><div className="text-xs opacity-60 mt-1">{new Date(p.createdAt).toLocaleString()}</div></a>))}
-      {projects.length===0&&(<div className="opacity-60 text-sm">لا توجد مشاريع بعد. اكتب وصفك في الأعلى واضغط السهم لبدء أول مشروع.</div>)}
-    </div></div></div>);
+  );
 }
